@@ -22,8 +22,8 @@ class Neuron(Module):
             :param n_inputs: Input dimensions
         """
 
-        self.w = Value(np.random.uniform(-1, 1, size=n_input))
-        self.b = Value(np.random.uniform(-1, 1, size=1))
+        self.w = Value(np.random.uniform(-1, 1, size=n_input), label="w")
+        self.b = Value(np.random.uniform(-1, 1, size=1), label="b")
         self.parameters = [self.w, self.b]
     
     def __call__(self, x):

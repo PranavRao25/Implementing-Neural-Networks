@@ -1,5 +1,6 @@
 import math
 import random
+from flask import g
 import numpy as np
 from abc import ABC, abstractmethod
 
@@ -85,10 +86,23 @@ class Multiplication(Operation):
     
     def __call__(self, data1, data2):
         self.data1, self.data2 = data1, data2
-        return data1 @ data2
+
+        if self.data1.ndim == 0 or self.data2.ndim == 0:
+            return np.array(data1 * data2)
+        return np.array(data1 @ data2)
 
     def _backward(self, grad_out):
-        return (grad_out @ self.data2, grad_out @ self.data1)  # CAREFUL
+        d1 = np.atleast_2d(self.data1)
+        d2 = np.atleast_2d(self.data2)
+    
+        if grad_out.ndim == 0 or grad_out.size == 1:
+            grad1 = grad_out * d2
+            grad2 = d1 * grad_out
+        else:
+            grad1 = grad_out @ d2
+            grad2 = d1 @ grad_out
+
+        return grad1.reshape(self.data1.shape), grad2.reshape(self.data2.shape)
 
 class Subtraction(Operation):
     def __init__(self, label = "sub") -> None:
@@ -105,28 +119,43 @@ class Division(Operation):
         super().__init__(label)
     
     def __call__(self, data1, data2):
-        if data2 == 0:
+        if data2.ndim == 0 and (data2 == 0).all():
             raise ZeroDivisionError
 
         self.data1, self.data2 = data1, data2
         return data1 / data2
     
     def _backward(self, grad_out):
-        return (grad_out / self.data2, - self.data1 @ grad_out / (self.data2 ** 2))  # CAREFUL
+        g_out = np.atleast_2d(grad_out)
+        d1 = np.atleast_2d(self.data1)
+        d2 = np.atleast_2d(self.data2)
+
+        grad1 = grad_out / self.data2
+
+        condition = grad_out.ndim == 0 or grad_out.size == 1
+        grad2 = - d1 * g_out / (d2 ** 2) if condition else - d1 @ g_out / (d2 ** 2)
+
+        return grad1.reshape(self.data1.shape), grad2.reshape(self.data2.shape)  # CAREFUL
 
 class Power(Operation):
     def __init__(self, label = "pow") -> None:
         super().__init__(label)
     
     def __call__(self, data1, data2):
-        if not isinstance(data2, (int, float)):
+        if data2.ndim != 0:
             raise TypeError
         
         self.data1, self.data2 = data1, data2
         return data1 ** data2
     
     def _backward(self, grad_out):
-        return (grad_out @ self.data2 * (self.data1 ** (self.data2 - 1)), 0.0)  # CAREFUL
+        g_out = np.atleast_2d(grad_out)
+        d1 = np.atleast_2d(self.data1)
+        d2 = np.atleast_2d(self.data2)
+
+        grad1 = g_out @ d2 * (d1 ** (d2 - 1))
+        grad1 = grad1.reshape(self.data1.shape)
+        return (grad1, 0.0)  # CAREFUL
 
 class Exp(Operation):
     def __init__(self, label = "exp") -> None:
@@ -134,10 +163,17 @@ class Exp(Operation):
     
     def __call__(self, data1, _):
         self.out: np.ndarray = np.exp(data1)
+        self.data = data1
         return self.out
     
     def _backward(self, grad_out):
-        return (self.out @ grad_out, None)  # None as unary operation  # CAREFUL
+        g_out = np.atleast_2d(grad_out)
+        ou1 = np.atleast_2d(self.out)
+        
+        condition = grad_out.ndim == 0 or grad_out.size == 1
+        grad1 = ou1 @ g_out if not condition else ou1 * grad_out
+        grad1 = grad1.reshape(self.data.shape)
+        return (grad1, None)  # None as unary operation  # CAREFUL
 
 class Tanh(Operation):
     def __init__(self, label = "tanh") -> None:
@@ -201,7 +237,7 @@ class Value:
         Basic node in the computational graph
     """
 
-    def __init__(self, data: np.ndarray, label="", _childern = (), _op = '') -> None:
+    def __init__(self, data, label="", _childern = (), _op = '') -> None:
         """
             Value object to store numerical values
             :param data      - numerical value
@@ -210,12 +246,13 @@ class Value:
             :param _op       - operation leading to the current value
         """
 
-        self.data = data
+        self.data = np.array(data, dtype=np.float64)
+        print(label, self.data, type(self.data))
         self.label = label
         self._prev = set(_childern)  # used for backprop (childern is previous)
         self._op = _op
         self.op_fact = OperationFactory()  # to create operations
-        self.grad = np.zeros_like(data)  # records the partial derivative of output wrt this node
+        self.grad = np.zeros_like(data, dtype=np.float64)  # records the partial derivative of output wrt this node
         self._backward = lambda : None  # used for backpropagation
     
     def __repr__(self) -> str:
@@ -319,9 +356,54 @@ class Value:
         
         topo = []
         visited = set()
-        self.grad = 1.0
+        self.grad = np.array(1.0, dtype=np.float64)
         
         build_topo(self)
         for node in topo:
             node._backward()
             
+if __name__ == "__main__":
+    pass
+    # v = Value(np.array([[1, 2], [2, 3]]))
+    # b = Value(np.array([[3, 4], [5, 6]]))
+
+    # a = v + b
+    # print(a)
+    # a.backward()
+    # print(v.grad, b.grad, a.grad)
+
+    # a = v * b
+    # print(a)
+    # print(v.grad, b.grad, a.grad)
+    # a.backward()
+    # print(v.grad, b.grad, a.grad)
+
+    # a = v / b
+    # print(a)
+    # a.backward()
+    # print(v.grad, b.grad, a.grad)
+
+    # a = v - b
+    # print(a)
+    # a.backward()
+    # print(v.grad, b.grad, a.grad)
+
+    # a = v ** 2
+    # print(a)
+    # a.backward()
+    # print(v.grad, b.grad, a.grad)
+
+    # a = v.exp()
+    # print(a)
+    # a.backward()
+    # print(v.grad, b.grad, a.grad)
+
+    # a = v.tanh()
+    # print(a)
+    # a.backward()
+    # print(v.grad, b.grad, a.grad)
+
+    # a = v.relu()
+    # print(a)
+    # a.backward()
+    # print(v.grad, b.grad, a.grad)
