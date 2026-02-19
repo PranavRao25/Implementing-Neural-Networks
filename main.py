@@ -1,4 +1,5 @@
 from src.nn import *
+from src.optim import *
 
 def loss_fn(t, p):
     return (t - p) ** 2  # mse
@@ -18,15 +19,10 @@ mlp = MLP(n_input, n_outs)
 lr = 0.01
 n_epochs = 20
 
-for i in range(n_epochs):
-    pred = [mlp(x)[0] for x in X]
-    loss = sum(loss_fn(t, p) for t, p in zip(y, pred))
+gd = GradientDescent(loss_fn, mlp)
+mlp, loss_sch = gd.learn(n_epochs, lr, X, y)
 
-    for param in mlp.parameters:
-        param.grad = 0  # so that the grad of loss calculated is only for this new iteration
-    loss.backward()
-
-    print(f"{i} : {loss.data}")
-
-    for param in mlp.parameters:
-        param.data += -lr * param.grad
+# GRAD_DESCENT(n_epochs, lr, loss_fn, X, y, mlp)
+# SGD(n_epochs, lr, loss_fn, X, y, mlp)
+# MiniBatch-SGD(n_epochs, lr, loss_fn, X, y, mlp, b)
+# Optimization_GD(n_epochs, lr,loss_fn, X, y, mlp, *args, **kwargs)

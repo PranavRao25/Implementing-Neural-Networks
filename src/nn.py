@@ -7,6 +7,10 @@ class Module(ABC):
         Abstract class for nueral network implementations
     """
 
+    def __init__(self, n_inputs, n_outs) -> None:
+        self.parameters = None
+        super().__init__()
+
     def __call__(self, x):
         raise NotImplementedError
 
@@ -15,12 +19,12 @@ class Neuron(Module):
         Basic Building Block
     """
 
-    def __init__(self, n_inputs) -> None:
+    def __init__(self, n_input, n_outs=1) -> None:
         """
             :param n_inputs: Input dimensions
         """
 
-        self.w = [Value(random.uniform(-1, 1)) for _ in range(n_inputs)]
+        self.w = [Value(random.uniform(-1, 1)) for _ in range(n_input)]
         self.b = Value(random.uniform(-1, 1))
         self.parameters = self.w + [self.b]
     
@@ -40,8 +44,8 @@ class Layer(Module):
         Composite of Neuron Class
     """
 
-    def __init__(self, n_in, n_out) -> None:
-        self.neurons = [Neuron(n_in) for _ in range(n_out)]
+    def __init__(self, n_input, n_outs) -> None:
+        self.neurons = [Neuron(n_input) for _ in range(n_outs)]
         self.parameters = [param for n in self.neurons for param in n.parameters]
     
     def __call__(self, x):
@@ -71,3 +75,5 @@ class MLP(Module):
         
         for param in self.parameters:
             param.grad = 0
+
+# TODO: Implement using Numpy
