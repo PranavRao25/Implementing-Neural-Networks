@@ -1,6 +1,4 @@
-import math
-import random
-from node import *
+from src.node import *
 
 class Module(ABC):
     """
@@ -19,14 +17,14 @@ class Neuron(Module):
         Basic Building Block
     """
 
-    def __init__(self, n_input, n_outs=1) -> None:
+    def __init__(self, n_input: int, n_outs=1) -> None:
         """
             :param n_inputs: Input dimensions
         """
 
-        self.w = [Value(random.uniform(-1, 1)) for _ in range(n_input)]
-        self.b = Value(random.uniform(-1, 1))
-        self.parameters = self.w + [self.b]
+        self.w = Value(np.random.uniform(-1, 1, size=n_input))
+        self.b = Value(np.random.uniform(-1, 1, size=1))
+        self.parameters = [self.w, self.b]
     
     def __call__(self, x):
         """
@@ -34,7 +32,7 @@ class Neuron(Module):
             :param x: Input vector of n_inputs dimension
         """
 
-        act = sum((w.data*i for w,i in zip(self.w, x)), self.b)
+        act = self.w @ x + self.b
         out = act.tanh()
         return out
 
@@ -74,6 +72,7 @@ class MLP(Module):
         """
         
         for param in self.parameters:
-            param.grad = 0
+            k = param.grad.shape  # type: ignore
+            param.grad = np.zeros(k)
 
 # TODO: Implement using Numpy

@@ -1,5 +1,6 @@
 import math
 import random
+import numpy as np
 from abc import ABC, abstractmethod
 
 class Operation(ABC):
@@ -84,10 +85,10 @@ class Multiplication(Operation):
     
     def __call__(self, data1, data2):
         self.data1, self.data2 = data1, data2
-        return data1 * data2
+        return data1 @ data2
 
     def _backward(self, grad_out):
-        return (grad_out * self.data2, grad_out * self.data1)
+        return (grad_out @ self.data2, grad_out @ self.data1)  # CAREFUL
 
 class Subtraction(Operation):
     def __init__(self, label = "sub") -> None:
@@ -111,7 +112,7 @@ class Division(Operation):
         return data1 / data2
     
     def _backward(self, grad_out):
-        return (grad_out / self.data2, - self.data1 * grad_out / (self.data2 ** 2))
+        return (grad_out / self.data2, - self.data1 @ grad_out / (self.data2 ** 2))  # CAREFUL
 
 class Power(Operation):
     def __init__(self, label = "pow") -> None:
@@ -125,25 +126,25 @@ class Power(Operation):
         return data1 ** data2
     
     def _backward(self, grad_out):
-        return (grad_out * self.data2 * self.data1 ** (self.data2 - 1), 0.0)
+        return (grad_out @ self.data2 * (self.data1 ** (self.data2 - 1)), 0.0)  # CAREFUL
 
 class Exp(Operation):
     def __init__(self, label = "exp") -> None:
         super().__init__(label)
     
     def __call__(self, data1, _):
-        self.out = math.exp(data1)
-        return math.exp(data1)
+        self.out: np.ndarray = np.exp(data1)
+        return self.out
     
     def _backward(self, grad_out):
-        return (self.out * grad_out, None)  # None as unary operation
+        return (self.out @ grad_out, None)  # None as unary operation  # CAREFUL
 
 class Tanh(Operation):
     def __init__(self, label = "tanh") -> None:
         super().__init__(label)
     
     def __call__(self, data1, data2):
-        self.out = math.tanh(data1)
+        self.out: np.ndarray = np.tanh(data1)
         return self.out
     
     def _backward(self, grad_out):
@@ -154,11 +155,11 @@ class ReLU(Operation):
         super().__init__(label)
     
     def __call__(self, data1, data2):
-        self.data = data1
-        return max(0.0, data1)
+        self.data:np.ndarray = data1
+        return np.where(self.data > 0, self.data, 0.0)
     
     def _backward(self, grad_out):
-        return (grad_out if self.data > 0.0 else 0.0, None)
+        return (np.where(self.data > 0, grad_out, 0.0), None)
 
 class LossFunction(ABC):
     """
@@ -193,14 +194,14 @@ class MAE(LossFunction):
         super().__init__(label)
     
     def __call__(self, data1, data2):
-        return data1 - data2 if data1 > data2 else data2 - data1
+        return np.where(data1 > data2, data1 - data2, data2 - data1)
 
 class Value:
     """
         Basic node in the computational graph
     """
 
-    def __init__(self, data, label="", _childern = (), _op = '') -> None:
+    def __init__(self, data: np.ndarray, label="", _childern = (), _op = '') -> None:
         """
             Value object to store numerical values
             :param data      - numerical value
@@ -214,7 +215,7 @@ class Value:
         self._prev = set(_childern)  # used for backprop (childern is previous)
         self._op = _op
         self.op_fact = OperationFactory()  # to create operations
-        self.grad = 0.0  # records the partial derivative of output wrt this node
+        self.grad = np.zeros_like(data)  # records the partial derivative of output wrt this node
         self._backward = lambda : None  # used for backpropagation
     
     def __repr__(self) -> str:
@@ -242,6 +243,9 @@ class Value:
         mul = Multiplication()
         return self.operate(other, mul)
 
+    def __matmul__(self, other):
+        return self * other
+        
     def __rmul__(self, other):  # other * self
         return self * other    
     
@@ -309,7 +313,7 @@ class Value:
 
             if node not in visited:
                 visited.add(node)
-                topo.append(node)  # WHERE IT MIGHT GO WRONG
+                topo.append(node)  # WHERE IT MIGHT GO WRONG (BUT DOES IT THO?)
                 for child in node._prev:
                     build_topo(child)
         

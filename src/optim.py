@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from src.node import *
 from src.nn import *
+import math
 from dataclasses import dataclass, field
 from typing import Callable, Any, Dict
 
@@ -36,7 +37,7 @@ class GradientDescent(Optimization):
     def learn(self, n_epochs: int, lr: float, X, y,
               hparams: Dict[str, Any] | None = None, **kwargs):
         
-        super().learn(n_epochs, lr, hparams, **kwargs)
+        super().learn(n_epochs, lr, X, y, hparams, **kwargs)
 
         if len(X) != len(y):
             raise Exception(f"Dataset size mismatch: {len(X)} != {len(y)}")
@@ -52,7 +53,8 @@ class GradientDescent(Optimization):
 
             # Backward Pass
             for param in self.mlp.parameters: # type: ignore
-                param.grad = 0  # so that the grad of loss calculated is only for this new iteration
+                k = param.grad.shape
+                param.grad = np.zeros(k)  # so that the grad of loss calculated is only for this new iteration
             loss.backward()
 
             print(f"{epoch} : {loss.data}")
@@ -67,7 +69,7 @@ class SGD(Optimization):
     def learn(self, n_epochs: int, lr: float, X, y,
               hparams: Dict[str, Any] | None = None, **kwargs):
         
-        super().learn(n_epochs, lr, hparams, **kwargs)
+        super().learn(n_epochs, lr, X, y, hparams, **kwargs)
 
         if len(X) != len(y):
             raise Exception(f"Dataset size mismatch: {len(X)} != {len(y)}")
@@ -91,7 +93,8 @@ class SGD(Optimization):
 
                 # Backward Pass
                 for param in self.mlp.parameters: # type: ignore
-                    param.grad = 0  # so that the grad of loss calculated is only for this new iteration
+                    k = param.grad.shape
+                    param.grad = np.zeros(k)  # so that the grad of loss calculated is only for this new iteration
                 loss.backward()
 
                 # Update Parameters
@@ -104,7 +107,7 @@ class MiniBatchSGD(Optimization):
     def learn(self, n_epochs: int, lr: float, X, y,
               hparams: Dict[str, Any] | None = None, **kwargs):
         
-        super().learn(n_epochs, lr, hparams, **kwargs)
+        super().learn(n_epochs, lr, X, y, hparams, **kwargs)
 
         hparams = hparams or {}
         b = hparams["b"] or 4
@@ -118,20 +121,22 @@ class MiniBatchSGD(Optimization):
             D = list(zip(X, y))
             np.random.shuffle(D)
 
-            for t in range(1, np.ceil(N/b)):
-                batch = D[(t-1)*b + 1 : np.min(t*b, N)]
-                X, y = [point[0] for point in batch], [point[1] for point in batch]
+            for t in range(1, math.ceil(N/b)+1):
+                batch = D[(t-1)*b : min(t*b, N)]
+                bX, by = [point[0] for point in batch], [point[1] for point in batch]
+                
                 # Forward Pass
-                pred = [self.mlp(x)[0] for x in X]
+                pred = [self.mlp(x)[0] for x in bX]
 
                 # Compute Error
-                loss: Value = sum(self.loss_fn(t, p) for t, p in zip(y, pred))/len(batch)  # type: ignore
+                loss: Value = sum(self.loss_fn(t, p) for t, p in zip(by, pred))/len(batch)  # type: ignore
 
                 self.loss_schedule.append(loss)
 
                 # Backward Pass
                 for param in self.mlp.parameters: # type: ignore
-                    param.grad = 0  # so that the grad of loss calculated is only for this new iteration
+                    k = param.grad.shape
+                    param.grad = np.zeros(k)  # so that the grad of loss calculated is only for this new iteration
                 loss.backward()
 
                 # Update Parameters
